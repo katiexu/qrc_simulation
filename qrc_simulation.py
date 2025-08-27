@@ -14,6 +14,7 @@ from sklearn.preprocessing import MinMaxScaler
 from tqdm import tqdm
 import os
 import json
+from sklearn.metrics import mean_squared_error
 
 # Import utilities
 from utilities import *
@@ -398,6 +399,57 @@ class QRCAnalyzer:
         
         return np.sum(capacities_test)
 
+    @staticmethod
+    def rnn(features_df, time_series,eta,seq_length):
+
+        tot_width = features_df.shape[1]
+        N_raw_data = len(features_df)
+        N_skip = 20
+        data_size = N_raw_data - N_skip-seq_length
+
+        # Prepare data tensors
+        X_data = pt.zeros(data_size, seq_length*tot_width, dtype=float)
+        Y_ini_data = pt.zeros(data_size, 1, dtype=float)
+
+        data=features_df.values
+        for k in range(seq_length,data_size):
+            X_data[k] = pt.tensor(data[k-seq_length:k, :].flatten(), dtype=float)
+            Y_ini_data[k] = time_series[k]
+
+        eta = abs(eta)
+
+        Y_data = pt.roll(Y_ini_data, -eta)
+
+        fraction_train = 0.7
+        N_train = int(fraction_train * data_size)
+
+        X_train = X_data[:N_train, :].float()
+        y_train = Y_data[:N_train].float()
+        X_test = X_data[-data_size + N_train:, :].float()
+        y_test = Y_data[-data_size + N_train:].float()
+
+        # Linear regression
+        model = LinearRegression()
+        model.fit(X_train, y_train)
+
+        y_train_pred = model.predict(X_train)
+        y_test_pred = model.predict(X_test)
+
+        y_train = y_train.detach().numpy()
+        y_test = y_test.detach().numpy()
+
+        # Compute capacities
+        capacity_train = np.cov(y_train.T, y_train_pred.T, ddof=1)[0, 1] ** 2 / (
+                np.var(y_train, ddof=1) * np.var(y_train_pred, ddof=1)
+        )
+
+        capacity_test = np.cov(y_test.T, y_test_pred.T, ddof=1)[0, 1] ** 2 / (
+                np.var(y_test, ddof=1) * np.var(y_test_pred, ddof=1)
+        )
+        mse = mean_squared_error(y_test, y_test_pred)
+
+        return capacity_train, capacity_test,mse
+
 
 def load_time_series(data_type="santa_fe"):
     """
@@ -458,23 +510,14 @@ def main():
     # Run simulation with default parameters
     g, h = 0.5, 1
     features_df = simulator.run_simulation(time_series, g=g, h=h)
-    
-    # Analyze performance
-    analyzer = QRCAnalyzer()
-    
-    # Single capacity
-    eta = 10
-    capacity_train, capacity_test = analyzer.compute_capacity(
-        features_df, time_series, eta, f_p=True
-    )
-    print(f"Capacity for eta = {eta}: {np.round(capacity_test, 4)}")
-    
-    # Sum capacity
-    eta_max = 20
-    sum_capacity = analyzer.compute_sum_capacity(
-        features_df, time_series, eta_max, f_p=True
-    )
-    print(f"Sum capacity for eta_max = {eta_max}: {np.round(sum_capacity, 4)}")
+
+    # 创建序列
+    eta=7
+    seq_length=6
+    capacity_train, capacity_test,mse = QRCAnalyzer().rnn(features_df,time_series, eta,seq_length)
+
+    print(f"eta = {eta} seq_length = {seq_length}  Capacity : {np.round(capacity_test, 4)} \t mse : {mse:.4f}")
+
 
 
 if __name__ == "__main__":

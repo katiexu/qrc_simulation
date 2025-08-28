@@ -483,6 +483,18 @@ def load_time_series(data_type="santa_fe"):
 
         # 将归一化后的数据转换回一维数组
         time_series = train_data_scaled.flatten().tolist()
+    elif data_type == "weather":
+        data = pd.read_csv('./stock_price/train_weather.csv')['Atmospheric Pressure'].values.reshape(-1, 1)
+        # data = pd.read_csv('./stock_price/testdata_stock.csv')['Open'].values.reshape(-1, 1)
+        # 初始化归一化器
+        train_scaler = MinMaxScaler(feature_range=(0, 1))
+
+        # 对训练数据进行拟合和转换
+        train_data_scaled = train_scaler.fit_transform(data)
+
+        # 将归一化后的数据转换回一维数组
+        time_series = train_data_scaled.flatten().tolist()
+
     else:
         raise ValueError("data_type must be 'santa_fe' or 'smt'")
     
@@ -501,7 +513,7 @@ def main():
     print("==================")
     
     # Load time series
-    time_series = load_time_series("stock")
+    time_series = load_time_series("weather")
     print(f"Loaded time series with {len(time_series)} points")
     
     # Initialize simulator
